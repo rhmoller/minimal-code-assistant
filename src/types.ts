@@ -25,7 +25,7 @@ export interface ToolCall {
 /** JSON Schema subset used to describe tool parameters. */
 export interface ToolParameters {
   type: "object";
-  properties: Record<string, { type: string; description: string }>;
+  properties: Record<string, { type: string; description: string; enum?: string[] }>;
   required?: string[];
 }
 
