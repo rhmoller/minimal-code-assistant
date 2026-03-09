@@ -36,9 +36,11 @@ function handleSlashCommand(input: string): boolean {
     case "/exit":
       process.exit(0);
     case "/dump":
+      console.log("--- Conversation History ---");
       for (const msg of messages) {
         console.log(`[${msg.role}]\n${msg.content}\n`);
       }
+      console.log("--- End of History ---");
       return true;
     default:
       console.log(`Unknown command: ${input}`);
