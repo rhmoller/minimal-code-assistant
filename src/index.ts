@@ -31,9 +31,25 @@ async function chat(userMessage: string): Promise<string> {
   return reply;
 }
 
+function handleSlashCommand(input: string): boolean {
+  switch (input) {
+    case "/exit":
+      process.exit(0);
+    case "/dump":
+      for (const msg of messages) {
+        console.log(`[${msg.role}]\n${msg.content}\n`);
+      }
+      return true;
+    default:
+      console.log(`Unknown command: ${input}`);
+      return true;
+  }
+}
+
 while (true) {
   const input = await ask("> ");
   if (!input.trim()) continue;
+  if (input.startsWith("/")) { handleSlashCommand(input); continue; }
   const reply = await chat(input);
   console.log(reply);
 }
