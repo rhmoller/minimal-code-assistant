@@ -49,6 +49,10 @@ function handleSlashCommand(input: string): void {
   switch (input) {
     case "/exit":
       process.exit(0);
+    case "/reset":
+      messages.length = 1;
+      console.log("Conversation history cleared.");
+      break;
     case "/tools":
       for (const tool of toolDefinitions) {
         console.log(`${tool.function.name} - ${tool.function.description}`);
