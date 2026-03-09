@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import type { Dirent } from "fs";
 import path from "path";
 import os from "os";
 import type { Tool } from "./types.js";
@@ -8,6 +9,8 @@ export interface Skill {
   description: string;
   /** Absolute path to the SKILL.md file. */
   location: string;
+  /** Parsed body of SKILL.md (frontmatter stripped), stored at discovery time. */
+  body: string;
 }
 
 function parseFrontmatter(content: string): { name: string | undefined; description: string | undefined; body: string } | null {
@@ -23,7 +26,6 @@ function parseFrontmatter(content: string): { name: string | undefined; descript
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim();
     let value = line.slice(colonIdx + 1).trim();
-    // Strip surrounding quotes
     if ((value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
@@ -34,50 +36,51 @@ function parseFrontmatter(content: string): { name: string | undefined; descript
   return { name: fields["name"], description: fields["description"], body };
 }
 
+async function tryLoadSkill(dir: string, entry: Dirent): Promise<Skill | null> {
+  if (entry.name.startsWith(".") || entry.name === "node_modules") return null;
+  if (!entry.isDirectory() && !entry.isSymbolicLink()) return null;
+
+  if (entry.isSymbolicLink()) {
+    try {
+      const stat = await fs.stat(path.join(dir, entry.name));
+      if (!stat.isDirectory()) return null;
+    } catch {
+      return null;
+    }
+  }
+
+  const skillMdPath = path.join(dir, entry.name, "SKILL.md");
+  let content;
+  try {
+    content = await fs.readFile(skillMdPath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  const parsed = parseFrontmatter(content);
+  if (!parsed?.description) {
+    console.warn(`[skills] Skipping ${skillMdPath}: missing description`);
+    return null;
+  }
+
+  return {
+    name: parsed.name ?? entry.name,
+    description: parsed.description,
+    location: skillMdPath,
+    body: parsed.body,
+  };
+}
+
 async function scanSkillsDir(dir: string): Promise<Skill[]> {
-  const skills: Skill[] = [];
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
-    return skills; // directory doesn't exist
+    return [];
   }
 
-  for (const entry of entries) {
-    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    // Resolve symlinks — stat follows the link to check the real type
-    if (entry.isSymbolicLink()) {
-      try {
-        const stat = await fs.stat(path.join(dir, entry.name));
-        if (!stat.isDirectory()) continue;
-      } catch {
-        continue;
-      }
-    }
-
-    const skillMdPath = path.join(dir, entry.name, "SKILL.md");
-    let content;
-    try {
-      content = await fs.readFile(skillMdPath, "utf-8");
-    } catch {
-      continue;
-    }
-
-    const parsed = parseFrontmatter(content);
-    if (!parsed?.description) {
-      console.warn(`[skills] Skipping ${skillMdPath}: missing description`);
-      continue;
-    }
-
-    skills.push({
-      name: parsed.name ?? entry.name,
-      description: parsed.description,
-      location: skillMdPath,
-    });
-  }
-
-  return skills;
+  const results = await Promise.all(entries.map(entry => tryLoadSkill(dir, entry)));
+  return results.filter((s): s is Skill => s !== null);
 }
 
 async function listFilesRecursive(dir: string, prefix = ""): Promise<string[]> {
@@ -88,7 +91,8 @@ async function listFilesRecursive(dir: string, prefix = ""): Promise<string[]> {
     if (entry.isFile()) {
       files.push(rel);
     } else if (entry.isDirectory() && !entry.name.startsWith(".")) {
-      files.push(...await listFilesRecursive(path.join(dir, entry.name), rel));
+      const nested = await listFilesRecursive(path.join(dir, entry.name), rel);
+      for (const f of nested) files.push(f);
     }
   }
   return files;
@@ -98,18 +102,19 @@ export async function discoverSkills(): Promise<Map<string, Skill>> {
   const cwd = process.cwd();
   const home = os.homedir();
 
-  // Higher index = higher priority (project overrides user)
-  const scanDirs = [
+  // Higher index = higher priority (project overrides user). Deduplicated for when cwd === home.
+  const scanDirs = [...new Set([
     path.join(home, ".agents", "skills"),
     path.join(home, ".claude", "skills"),
     path.join(cwd, ".agents", "skills"),
     path.join(cwd, ".claude", "skills"),
-  ];
+  ])];
+
+  const allResults = await Promise.all(scanDirs.map(scanSkillsDir));
 
   const skills = new Map<string, Skill>();
-
-  for (const dir of scanDirs) {
-    for (const skill of await scanSkillsDir(dir)) {
+  for (const dirSkills of allResults) {
+    for (const skill of dirSkills) {
       if (skills.has(skill.name)) {
         console.warn(`[skills] "${skill.name}" overridden by higher-priority location`);
       }
@@ -158,9 +163,6 @@ export function buildActivateSkillTool(skills: Map<string, Skill>): Tool {
       const skill = skills.get(name);
       if (!skill) return `Unknown skill: ${name}`;
 
-      const content = await fs.readFile(skill.location, "utf-8");
-      const parsed = parseFrontmatter(content);
-      const body = parsed?.body ?? content;
       const skillDir = path.dirname(skill.location);
 
       let resources = "";
@@ -173,7 +175,7 @@ export function buildActivateSkillTool(skills: Map<string, Skill>): Tool {
 
       return [
         `<skill_content name="${name}">`,
-        body,
+        skill.body,
         ``,
         `Skill directory: ${skillDir}`,
         `Relative paths in this skill are relative to the skill directory.`,

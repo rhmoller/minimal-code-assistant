@@ -1,8 +1,5 @@
-import { exec } from "child_process";
-import { promisify } from "util";
 import type { Tool } from "../types.js";
-
-const execAsync = promisify(exec);
+import { execAsync } from "./exec.js";
 
 export const fuzzy_find: Tool = {
   definition: {

@@ -1,28 +1,16 @@
 import readline from "readline";
-import type { ChatRequest, ChatResponse, Message, Tool } from "./types.js";
-import { toolDefinitions, executeTool } from "./tools/index.js";
+import type { ChatRequest, ChatResponse, Message } from "./types.js";
+import { tools } from "./tools/index.js";
 import { discoverSkills, buildSkillCatalog, buildActivateSkillTool } from "./skills.js";
 
 const API_URL = "http://localhost:1234/v1/chat/completions";
 const MODEL = "qwen/qwen3-coder-next";
 
-// Discover skills at startup
+// Discover skills and build unified tool registry
 const skills = await discoverSkills();
-const activateSkillTool: Tool | null = skills.size > 0 ? buildActivateSkillTool(skills) : null;
-
-// Build tool list and unified executor
-const allToolDefs = [
-  ...toolDefinitions,
-  ...(activateSkillTool ? [activateSkillTool.definition] : []),
-];
-
-async function executeAnyTool(name: string, argsJson: string): Promise<string> {
-  if (name === "activate_skill" && activateSkillTool) {
-    const args = JSON.parse(argsJson) as Record<string, unknown>;
-    return activateSkillTool.execute(args);
-  }
-  return executeTool(name, argsJson);
-}
+const allTools = [...tools, ...(skills.size > 0 ? [buildActivateSkillTool(skills)] : [])];
+const toolMap = new Map(allTools.map(t => [t.definition.function.name, t]));
+const allToolDefs = allTools.map(t => t.definition);
 
 // Build system prompt
 const systemPromptParts = ["You are a helpful coding assistant."];
@@ -52,6 +40,7 @@ async function callApi(): Promise<ChatResponse> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
+  if (!response.ok) throw new Error(`API error ${response.status}: ${await response.text()}`);
   return response.json() as Promise<ChatResponse>;
 }
 
@@ -70,7 +59,9 @@ async function chat(userMessage: string): Promise<string> {
     }
 
     for (const toolCall of choice.message.tool_calls ?? []) {
-      const result = await executeAnyTool(toolCall.function.name, toolCall.function.arguments);
+      const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+      const tool = toolMap.get(toolCall.function.name);
+      const result = tool ? await tool.execute(args) : `Unknown tool: ${toolCall.function.name}`;
       messages.push({ role: "tool", tool_call_id: toolCall.id, content: result });
     }
   }
@@ -108,6 +99,10 @@ while (true) {
   const input = await ask("> ");
   if (!input.trim()) continue;
   if (input.startsWith("/")) { handleSlashCommand(input); continue; }
-  const reply = await chat(input);
-  console.log(reply);
+  try {
+    const reply = await chat(input);
+    console.log(reply);
+  } catch (err) {
+    console.error(`Error: ${err}`);
+  }
 }
