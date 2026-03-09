@@ -44,7 +44,17 @@ async function scanSkillsDir(dir: string): Promise<Skill[]> {
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    // Resolve symlinks — stat follows the link to check the real type
+    if (entry.isSymbolicLink()) {
+      try {
+        const stat = await fs.stat(path.join(dir, entry.name));
+        if (!stat.isDirectory()) continue;
+      } catch {
+        continue;
+      }
+    }
 
     const skillMdPath = path.join(dir, entry.name, "SKILL.md");
     let content;
