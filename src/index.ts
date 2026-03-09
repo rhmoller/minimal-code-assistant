@@ -49,6 +49,11 @@ function handleSlashCommand(input: string): void {
   switch (input) {
     case "/exit":
       process.exit(0);
+    case "/tools":
+      for (const tool of toolDefinitions) {
+        console.log(`${tool.function.name} - ${tool.function.description}`);
+      }
+      break;
     case "/dump":
       console.log("--- Conversation History ---");
       for (const msg of messages) {
