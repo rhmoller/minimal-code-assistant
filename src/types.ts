@@ -39,6 +39,12 @@ export interface ToolDefinition {
   };
 }
 
+/** A tool with its API definition and local execute function. */
+export interface Tool {
+  definition: ToolDefinition;
+  execute: (args: Record<string, unknown>) => Promise<string>;
+}
+
 /** Request body for POST /v1/chat/completions. */
 export interface ChatRequest {
   /** The model identifier to use for completion. */

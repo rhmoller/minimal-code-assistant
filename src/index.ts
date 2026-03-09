@@ -1,6 +1,6 @@
 import readline from "readline";
 import type { ChatRequest, ChatResponse, Message } from "./types.js";
-import { toolDefinitions, executeTool } from "./tools.js";
+import { toolDefinitions, executeTool } from "./tools/index.js";
 
 const API_URL = "http://localhost:1234/v1/chat/completions";
 const MODEL = "qwen/qwen3-coder-next";
