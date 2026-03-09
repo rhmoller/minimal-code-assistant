@@ -52,7 +52,7 @@ function handleSlashCommand(input: string): void {
     case "/dump":
       console.log("--- Conversation History ---");
       for (const msg of messages) {
-        console.log(`[${msg.role}]`);
+        console.log(`[${msg.role}]${msg.tool_call_id ? ` ${msg.tool_call_id}` : ""}`);
         if (msg.content) console.log(msg.content);
         if (msg.tool_calls) console.log(JSON.stringify(msg.tool_calls, null, 2));
         console.log();
