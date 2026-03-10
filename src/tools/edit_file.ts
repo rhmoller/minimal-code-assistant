@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import path from "path";
 import type { Tool } from "../types.js";
 
 export const edit_file: Tool = {
@@ -6,7 +7,7 @@ export const edit_file: Tool = {
     type: "function",
     function: {
       name: "edit_file",
-      description: "Replace the first occurrence of old_string with new_string in a file.",
+      description: "Replace old_string with new_string in a file. old_string must appear exactly once.",
       parameters: {
         type: "object",
         properties: {
@@ -19,15 +20,17 @@ export const edit_file: Tool = {
     },
   },
   async execute(args) {
-    const path = args["path"] as string;
+    const filePath = path.resolve(process.cwd(), args["path"] as string);
     const oldString = args["old_string"] as string;
     const newString = args["new_string"] as string;
-    console.log(`[edit_file] ${path}`);
+    console.log(`[edit_file] ${filePath}`);
     try {
-      const original = await fs.readFile(path, "utf-8");
-      if (!original.includes(oldString)) return `Error: old_string not found in ${path}`;
-      await fs.writeFile(path, original.replace(oldString, newString), "utf-8");
-      return `Replaced in ${path}`;
+      const original = await fs.readFile(filePath, "utf-8");
+      const count = original.split(oldString).length - 1;
+      if (count === 0) return `Error: old_string not found in ${filePath}`;
+      if (count > 1) return `Error: old_string found ${count} times in ${filePath}, must be unique`;
+      await fs.writeFile(filePath, original.replace(oldString, newString), "utf-8");
+      return `Replaced in ${filePath}`;
     } catch (err) {
       return String(err);
     }

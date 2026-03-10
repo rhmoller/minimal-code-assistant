@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import readline from "readline";
 import type { ChatRequest, ChatResponse, Message } from "./types.js";
 import { tools } from "./tools/index.js";
@@ -12,8 +13,10 @@ const allTools = [...tools, ...(skills.size > 0 ? [buildActivateSkillTool(skills
 const toolMap = new Map(allTools.map(t => [t.definition.function.name, t]));
 const allToolDefs = allTools.map(t => t.definition);
 
+const cwd = process.cwd();
+
 // Build system prompt
-const systemPromptParts = ["You are a helpful coding assistant."];
+const systemPromptParts = ["You are a helpful coding assistant.", `Current working directory: ${cwd}`];
 if (skills.size > 0) {
   systemPromptParts.push(
     "",
@@ -81,14 +84,13 @@ function handleSlashCommand(input: string): void {
       }
       break;
     case "/dump":
-      console.log("--- Conversation History ---");
       for (const msg of messages) {
+        console.log("--------------------");
         console.log(`[${msg.role}]${msg.tool_call_id ? ` ${msg.tool_call_id}` : ""}`);
         if (msg.content) console.log(msg.content);
         if (msg.tool_calls) console.log(JSON.stringify(msg.tool_calls, null, 2));
-        console.log();
       }
-      console.log("--- End of History ---");
+      console.log("--------------------");
       break;
     default:
       console.log(`Unknown command: ${input}`);

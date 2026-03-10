@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import path from "path";
 import type { Tool } from "../types.js";
 
 export const read_file: Tool = {
@@ -17,10 +18,10 @@ export const read_file: Tool = {
     },
   },
   async execute(args) {
-    const path = args["path"] as string;
-    console.log(`[read_file] ${path}`);
+    const filePath = path.resolve(process.cwd(), args["path"] as string);
+    console.log(`[read_file] ${filePath}`);
     try {
-      return await fs.readFile(path, "utf-8");
+      return await fs.readFile(filePath, "utf-8");
     } catch (err) {
       return String(err);
     }
