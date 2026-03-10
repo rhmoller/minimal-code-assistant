@@ -1,11 +1,29 @@
 #!/usr/bin/env node
+import { readFileSync } from "fs";
 import readline from "readline";
 import type { ChatRequest, ChatResponse, Message } from "./types.js";
 import { tools } from "./tools/index.js";
 import { discoverSkills, buildSkillCatalog, buildActivateSkillTool } from "./skills.js";
 
-const API_URL = "http://localhost:1234/v1/chat/completions";
-const MODEL = "qwen/qwen3-coder-next";
+let API_URL: string;
+let MODEL: string;
+let API_KEY: string | undefined;
+
+function setModel(modelName: string): void {
+  const modelConfig = config.models.find((m: { name: string }) => m.name === modelName);
+  if (!modelConfig) {
+    console.log(`Model "${modelName}" not found. Available models:`);
+    for (const m of config.models) console.log(`  ${m.name}`);
+    return;
+  }
+  API_URL = modelConfig.baseUrl;
+  MODEL = modelConfig.name;
+  API_KEY = modelConfig.apiKey ?? undefined;
+  console.log(`Switched to model: ${MODEL} (${API_URL})`);
+}
+
+const config = JSON.parse(readFileSync("config.json", "utf-8"));
+setModel(config.defaultModel);
 
 // Discover skills and build unified tool registry
 const skills = await discoverSkills();
@@ -38,9 +56,11 @@ const ask = (prompt: string): Promise<string> =>
 
 async function callApi(): Promise<ChatResponse> {
   const request: ChatRequest = { model: MODEL, messages, tools: allToolDefs };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (API_KEY) headers["Authorization"] = `Bearer ${API_KEY}`;
   const response = await fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(request),
   });
   if (!response.ok) throw new Error(`API error ${response.status}: ${await response.text()}`);
@@ -71,12 +91,26 @@ async function chat(userMessage: string): Promise<string> {
 }
 
 function handleSlashCommand(input: string): void {
-  switch (input) {
+  const [cmd, ...args] = input.split(" ");
+  switch (cmd) {
     case "/exit":
       process.exit(0);
     case "/reset":
       messages.length = 1;
       console.log("Conversation history cleared.");
+      break;
+    case "/model":
+      if (args.length === 0) {
+        console.log(`Current model: ${MODEL} (${API_URL})`);
+      } else {
+        setModel(args[0]!);
+      }
+      break;
+    case "/models":
+      for (const model of config.models) {
+        const selected = model.name === MODEL ? " *" : "";
+        console.log(`${model.name}${selected}`);
+      }
       break;
     case "/tools":
       for (const tool of allToolDefs) {
