@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How Coding Agents Work</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/theme/black.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
+  <style>
+    :root {
+      --accent: #7c9ef7;
+    }
+    .reveal h1, .reveal h2, .reveal h3 { color: var(--accent); }
+    .reveal pre { width: 100%; box-shadow: none; }
+    .reveal pre code { font-size: 0.7em; line-height: 1.5; max-height: 480px; }
+    .reveal .slides section { text-align: left; }
+    .reveal .slides section.center { text-align: center; }
+    .dim { opacity: 0.45; }
+    .highlight-line { background: rgba(124,158,247,0.15); display: block; }
+    .tag { color: #98c379; }
+    .label {
+      font-size: 0.55em;
+      background: var(--accent);
+      color: #111;
+      border-radius: 3px;
+      padding: 1px 6px;
+      vertical-align: middle;
+      margin-left: 6px;
+      font-weight: bold;
+    }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5em; align-items: start; }
+    .arrow { text-align: center; font-size: 1.8em; color: var(--accent); margin: 0.2em 0; }
+    .loop-box {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 0.6em 1em;
+      margin: 0.3em 0;
+      font-size: 0.8em;
+    }
+    .loop-label {
+      font-size: 0.55em;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ─── TITLE ─── -->
+<section class="center">
+  <h1 style="font-size:2em;">How Coding Agents Work</h1>
+  <p style="color:#aaa;">demystified, from scratch</p>
+  <br/>
+  <p style="font-size:0.6em; color:#666;">built this to find out → <code>github.com/rhm/minimal-code-assistant</code></p>
+</section>
+
+<!-- ─── PROGRESSION ─── -->
+<section>
+  <h2>How this was built</h2>
+  <ol style="font-size:0.82em; line-height:2em;">
+    <li>Manual <code>curl</code> against a local model in LM Studio</li>
+    <li>The same request as a <code>fetch</code> in TypeScript</li>
+    <li>Wrap it in a loop → REPL</li>
+    <li>Add tool calling → the model can <em>do</em> things</li>
+    <li>Add skills → the model knows <em>how</em> to do things</li>
+    <li>Add slash commands → <code>/reset</code>, <code>/model</code>, <code>/dump</code>, …</li>
+  </ol>
+  <p style="font-size:0.7em; color:#aaa; margin-top:0.6em;">Each step is small. The whole thing is less than 700 lines.</p>
+</section>
+
+<!-- ─── IT'S JUST HTTP ─── -->
+<section>
+  <h2>It's just HTTP</h2>
+  <p style="font-size:0.8em;">A coding agent is a <strong>while loop</strong> around a chat API call. That's it.</p>
+  <pre><code class="language-bash">curl http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5-coder-7b",
+    "messages": [
+      { "role": "system", "content": "You are a helpful coding assistant." },
+      { "role": "user",   "content": "What files are in the current directory?" }
+    ]
+  }'</code></pre>
+  <p style="font-size:0.65em; color:#aaa;">Started with this exact curl against LM Studio. Everything else is built on top.</p>
+</section>
+
+<!-- ─── THE RESPONSE ─── -->
+<section>
+  <h2>The response</h2>
+  <pre><code class="language-json">{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": "I can help with that! Could you share your working directory?"
+    },
+    "finish_reason": "stop"
+  }]
+}</code></pre>
+  <p style="font-size:0.75em;">
+    <code>finish_reason: "stop"</code> → model is done, show the reply<br/>
+    <code>finish_reason: "tool_calls"</code> → model wants to <em>do something</em>
+  </p>
+</section>
+
+<!-- ─── THE BASIC LOOP ─── -->
+<section>
+  <h2>A chat loop</h2>
+  <p style="font-size:0.75em;">Wrap the fetch in a loop and you have a REPL:</p>
+  <pre><code class="language-typescript">const messages: Message[] = [
+  { role: "system", content: "You are a helpful coding assistant." },
+];
+
+while (true) {
+  const input = await ask("> ");
+  messages.push({ role: "user", content: input });
+
+  const data = await callApi(messages);
+  const reply = data.choices[0].message;
+
+  messages.push(reply);           // keep the reply in history
+  console.log(reply.content);     // show it to the user
+}</code></pre>
+  <p style="font-size:0.7em; color:#aaa;">No memory on the server. You send the whole conversation every time.</p>
+</section>
+
+<!-- ─── MESSAGES ARE CONTEXT ─── -->
+<section>
+  <h2>Messages <em>are</em> context</h2>
+  <p style="font-size:0.75em;">After a few turns, the array looks like this:</p>
+  <pre><code class="language-json">messages: [
+  { "role": "system",    "content": "You are a helpful coding assistant." },
+
+  { "role": "user",      "content": "What does the config file do?" },
+  { "role": "assistant", "content": "It maps model names to API endpoints and keys." },
+
+  { "role": "user",      "content": "How is it loaded?" },
+  { "role": "assistant", "content": "With readFileSync('config.json') at startup." },
+
+  { "role": "user",      "content": "Can it reload without restarting?" },
+  { "role": "assistant", "content": "Not currently — it's only read once on boot." }
+]</code></pre>
+  <p style="font-size:0.7em; color:#aaa;">
+    Every request is stateless. "Memory" is just this array growing.<br/>
+    Context window = how large this can get before the model forgets the beginning.
+  </p>
+</section>
+
+<!-- ─── BRIDGE: JUST A CHAT CLIENT ─── -->
+<section class="center">
+  <h2>But this is just a chat client</h2>
+  <br/>
+  <p style="font-size:0.9em;">The model can <em>talk</em> about your code.<br/>It can't <em>touch</em> it.</p>
+  <br/>
+  <p style="font-size:0.8em; color:#aaa;">To do real work it needs hands and eyes —<br/>the ability to read files, run commands, search the codebase.</p>
+  <br/>
+  <p style="font-size:0.85em; color:var(--accent);">That's what tool calling is for.</p>
+</section>
+
+<!-- ─── TOOL CALLING: THE SCHEMA ─── -->
+<section>
+  <h2>Tool calling <span class="label">the contract</span></h2>
+  <p style="font-size:0.75em;">You describe your tools in JSON. The model decides when to call them.</p>
+  <pre><code class="language-typescript">// src/tools/bash.ts
+export const bash: Tool = {
+  definition: {
+    type: "function",
+    function: {
+      name: "bash",
+      description: "Execute a bash command and return its stdout and stderr.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "The bash command to execute." },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  async execute(args) {
+    const { stdout, stderr } = await execAsync(args.command);
+    return (stdout + stderr).trim();
+  },
+};</code></pre>
+</section>
+
+<!-- ─── TOOL CALLING: THE RESPONSE ─── -->
+<section>
+  <h2>Tool calling <span class="label">what the model returns</span></h2>
+  <p style="font-size:0.75em;">Instead of text, the model returns a structured call:</p>
+  <pre><code class="language-json">{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_abc123",
+        "function": {
+          "name": "bash",
+          "arguments": "{ \"command\": \"ls -la\" }"
+        }
+      }]
+    },
+    "finish_reason": "tool_calls"
+  }]
+}</code></pre>
+  <p style="font-size:0.7em;">You execute it, append the result, and call the API again.</p>
+</section>
+
+<!-- ─── THE AGENTIC LOOP ─── -->
+<section>
+  <h2>The agentic loop</h2>
+  <div style="display:flex; align-items:center; gap:0.5em; font-size:0.75em; flex-wrap:wrap;">
+    <div class="loop-box" style="flex:1; min-width:8em;">
+      <span class="loop-label">user message</span><br/>push to <code>messages[]</code>
+    </div>
+    <div style="color:var(--accent); font-size:1.4em;">→</div>
+    <div class="loop-box" style="flex:1; min-width:8em;">
+      <span class="loop-label">API call</span><br/>POST with full history
+    </div>
+    <div style="color:var(--accent); font-size:1.4em;">→</div>
+    <div class="loop-box" style="flex:1.4; min-width:10em;">
+      <span class="loop-label">finish_reason?</span><br/>
+      <span style="color:var(--accent)">tool_calls</span> → execute, append results, call again ↺<br/>
+      <span style="color:#aaa">stop → return reply to user</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─── THE AGENTIC LOOP: CODE ─── -->
+<section>
+  <h2>The loop in code</h2>
+  <pre><code class="language-typescript">// src/index.ts
+async function chat(userMessage: string): Promise&lt;string&gt; {
+  messages.push({ role: "user", content: userMessage });
+
+  while (true) {
+    const data = await callApi();
+    const choice = data.choices[0];
+
+    messages.push(choice.message); // always keep the full history
+
+    if (choice.finish_reason !== "tool_calls") {
+      return choice.message.content; // done
+    }
+
+    for (const toolCall of choice.message.tool_calls) {
+      const args = JSON.parse(toolCall.function.arguments);
+      const tool = toolMap.get(toolCall.function.name);
+      const result = await tool.execute(args);
+      messages.push({ role: "tool", tool_call_id: toolCall.id, content: result });
+    }
+    // loop: call API again with updated messages
+  }
+}</code></pre>
+</section>
+
+<!-- ─── TOOL CALLS IN THE MESSAGE HISTORY ─── -->
+<section>
+  <h2>Tool calls in the history</h2>
+  <p style="font-size:0.75em;">Tool calls and their results are just more messages. The model sees the full trace.</p>
+  <pre><code class="language-json">{ "role": "user",      "content": "rename all .js files to .ts" },
+
+{ "role": "assistant", "tool_calls": [{
+    "id": "call_abc",
+    "function": { "name": "bash", "arguments": "{\"command\": \"ls *.js\"}" }
+}]},
+{ "role": "tool", "tool_call_id": "call_abc", "content": "file1.js\nfile2.js" },
+
+{ "role": "assistant", "tool_calls": [{
+    "id": "call_def",
+    "function": { "name": "bash", "arguments": "{\"command\": \"mv file1.js file1.ts && mv file2.js file2.ts\"}" }
+}]},
+{ "role": "tool", "tool_call_id": "call_def", "content": "" },
+
+{ "role": "assistant", "content": "Done! Renamed file1.js and file2.js to .ts" }</code></pre>
+  <p style="font-size:0.7em; color:#aaa;">Each tool result is fed back so the model can decide what to do next.</p>
+</section>
+
+<!-- ─── SKILLS 1/2 ─── -->
+<section>
+  <h2>Skills <span class="label">1/2</span></h2>
+  <p style="font-size:0.75em;">A skill is a folder with a <code>SKILL.md</code> and whatever supporting files it needs.</p>
+  <div class="two-col">
+    <div>
+      <p style="font-size:0.65em; color:#aaa;">folder structure</p>
+      <pre><code class="language-bash">.claude/skills/
+└── commit/
+    ├── SKILL.md
+    ├── examples/
+    │   └── good-commits.md
+    └── scripts/
+        └── lint-msg.sh</code></pre>
+    </div>
+    <div>
+      <p style="font-size:0.65em; color:#aaa;">SKILL.md</p>
+      <pre><code class="language-markdown">---
+name: commit
+description: Create a git commit
+  following conventional commits style
+---
+
+Always use conventional commits.
+Run `git diff --staged` first.
+See examples/ for good commit messages.
+You can run scripts/lint-msg.sh to
+validate the message before committing.</code></pre>
+    </div>
+  </div>
+  <p style="font-size:0.7em; color:#aaa; margin-top:0.8em;">Reference docs, style guides, helper scripts — anything the model might need is co-located with the skill.</p>
+</section>
+
+<!-- ─── SKILLS 2/2 ─── -->
+<section>
+  <h2>Skills <span class="label">2/2</span> — progressive disclosure</h2>
+  <p style="font-size:0.75em;">Only name + description enter the system prompt at startup. The model pulls in what it needs, when it needs it. </p>
+  <div class="two-col">
+    <div>
+      <p style="font-size:0.65em; color:#aaa;">at startup</p>
+      <pre><code class="language-xml">&lt;available_skills&gt;
+  &lt;skill&gt;
+    &lt;name&gt;commit&lt;/name&gt;
+    &lt;description&gt;Create a git commit
+      following conventional commits
+    &lt;/description&gt;
+  &lt;/skill&gt;
+&lt;/available_skills&gt;</code></pre>
+    </div>
+    <div>
+      <p style="font-size:0.65em; color:#aaa;">after <code>activate_skill("commit")</code></p>
+      <pre><code class="language-xml">&lt;skill_content name="commit"&gt;
+Always use conventional commits.
+Run `git diff --staged` first.
+...
+&lt;skill_resources&gt;
+  &lt;file&gt;examples/good-commits.md&lt;/file&gt;
+  &lt;file&gt;scripts/lint-msg.sh&lt;/file&gt;
+&lt;/skill_resources&gt;
+&lt;/skill_content&gt;</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ─── WHAT THIS DOESN'T DO ─── -->
+<section>
+  <h2>What real agents add</h2>
+  <p style="font-size:0.75em; color:#aaa;">The architecture is the same. The gap is everything around it.</p>
+  <div class="two-col" style="font-size:0.78em; margin-top:0.6em;">
+    <ul style="line-height:2em;">
+      <li><strong>Streaming</strong> — token-by-token output</li>
+      <li><strong>Security</strong> — prompt injection, tool abuse</li>
+      <li><strong>Sandboxing</strong> — isolating what tools can touch</li>
+      <li><strong>Permission model</strong> — ask before destructive actions</li>
+    </ul>
+    <ul style="line-height:2em;">
+      <li><strong>Multi-modal</strong> — images, screenshots, PDFs</li>
+      <li><strong>MCP</strong> — standard protocol for external tools</li>
+      <li><strong>Sub-agents</strong> — spawning parallel workers</li>
+      <li><strong>Long context management</strong> -- compaction</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ─── DEMO TIME ─── -->
+<section class="center">
+  <h1 style="font-size:2.5em;">Demo time</h1>
+  <br/>
+  <div style="display:flex; gap:1.5em; justify-content:center; font-size:0.6em; text-align:left;">
+    <div style="border:1px solid #444; border-radius:6px; padding:0.8em 1.2em; min-width:12em;">
+      <div style="color:var(--accent); margin-bottom:0.4em; font-weight:bold;">this project</div>
+      <div>635 lines of TypeScript</div>
+      <div>zero runtime dependencies</div>
+      <div style="margin-top:0.4em; color:#888;">
+        index.ts &nbsp;144<br/>
+        skills.ts &nbsp;187<br/>
+        types.ts &nbsp;&nbsp;&nbsp;92<br/>
+        tools/ &nbsp;&nbsp;&nbsp;&nbsp;212
+      </div>
+    </div>
+    <div style="border:1px solid #444; border-radius:6px; padding:0.8em 1.2em; min-width:12em;">
+      <div style="color:var(--accent); margin-bottom:0.4em; font-weight:bold;">references</div>
+      <div>OpenAI Chat Completions API</div>
+      <div style="color:#888; margin-bottom:0.6em;">platform.openai.com/docs/api-reference/chat</div>
+      <div>Skills spec</div>
+      <div style="color:#888;">agentskills.io</div>
+    </div>
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/highlight/highlight.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    transition: 'fade',
+    transitionSpeed: 'fast',
+    plugins: [RevealHighlight],
+    highlight: { highlightOnLoad: true },
+  });
+</script>
+</body>
+</html>
