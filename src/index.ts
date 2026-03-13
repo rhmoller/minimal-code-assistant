@@ -5,6 +5,22 @@ import type { ChatRequest, ChatResponse, Message } from "./types.js";
 import { tools } from "./tools/index.js";
 import { discoverSkills, buildSkillCatalog, buildActivateSkillTool } from "./skills.js";
 
+// ANSI color codes matching presentation theme
+const C = {
+  reset: "\x1b[0m",
+  gray: "\x1b[90m",      // system: #888
+  green: "\x1b[92m",     // user: #98c379
+  blue: "\x1b[94m",      // assistant: #7c9ef7
+  yellow: "\x1b[93m",    // tool: #e5c07b
+} as const;
+
+const roleColor: Record<string, string> = {
+  system: C.gray,
+  user: C.green,
+  assistant: C.blue,
+  tool: C.yellow,
+};
+
 let API_URL: string;
 let MODEL: string;
 let API_KEY: string | undefined;
@@ -83,8 +99,11 @@ async function chat(userMessage: string): Promise<string> {
 
     for (const toolCall of choice.message.tool_calls ?? []) {
       const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+      console.log(`${C.yellow}[tool] ${toolCall.function.name}${C.reset}`);
+      console.log(`${C.yellow}  args: ${JSON.stringify(args)}${C.reset}`);
       const tool = toolMap.get(toolCall.function.name);
       const result = tool ? await tool.execute(args) : `Unknown tool: ${toolCall.function.name}`;
+      console.log(`${C.yellow}  result: ${result.slice(0, 200)}${result.length > 200 ? "..." : ""}${C.reset}`);
       messages.push({ role: "tool", tool_call_id: toolCall.id, content: result });
     }
   }
@@ -120,9 +139,10 @@ function handleSlashCommand(input: string): void {
     case "/dump":
       for (const msg of messages) {
         console.log("--------------------");
-        console.log(`[${msg.role}]${msg.tool_call_id ? ` ${msg.tool_call_id}` : ""}`);
-        if (msg.content) console.log(msg.content);
-        if (msg.tool_calls) console.log(JSON.stringify(msg.tool_calls, null, 2));
+        const color = roleColor[msg.role] ?? C.reset;
+        console.log(`${color}[${msg.role}]${C.reset}${msg.tool_call_id ? ` ${msg.tool_call_id}` : ""}`);
+        if (msg.content) console.log(`${color}${msg.content}${C.reset}`);
+        if (msg.tool_calls) console.log(`${C.blue}${JSON.stringify(msg.tool_calls, null, 2)}${C.reset}`);
       }
       console.log("--------------------");
       break;
@@ -137,8 +157,8 @@ while (true) {
   if (input.startsWith("/")) { handleSlashCommand(input); continue; }
   try {
     const reply = await chat(input);
-    console.log(reply);
+    console.log(`${C.blue}${reply}${C.reset}`);
   } catch (err) {
-    console.error(`Error: ${err}`);
+    console.error(`${C.yellow}Error: ${err}${C.reset}`);
   }
 }
