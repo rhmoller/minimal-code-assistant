@@ -44,6 +44,23 @@
       text-transform: uppercase;
       letter-spacing: 0.1em;
     }
+    /* message role colors */
+    .msg { display: block; }
+    .role-system    { color: #888; }
+    .role-user      { color: #98c379; }
+    .role-assistant { color: #7c9ef7; }
+    .role-tool      { color: #e5c07b; }
+    .msg-pre {
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 0.7em 1em;
+      font-family: monospace;
+      font-size: 0.68em;
+      line-height: 1.7;
+      overflow: auto;
+      max-height: 480px;
+    }
+    .msg-dim { opacity: 0.45; }
   </style>
 </head>
 <body>
@@ -54,8 +71,6 @@
 <section class="center">
   <h1 style="font-size:2em;">How Coding Agents Work</h1>
   <p style="color:#aaa;">demystified, from scratch</p>
-  <br/>
-  <p style="font-size:0.6em; color:#666;">built this to find out → <code>github.com/rhm/minimal-code-assistant</code></p>
 </section>
 
 <!-- ─── PROGRESSION ─── -->
@@ -131,18 +146,18 @@ while (true) {
 <section>
   <h2>Messages <em>are</em> context</h2>
   <p style="font-size:0.75em;">After a few turns, the array looks like this:</p>
-  <pre><code class="language-json">messages: [
-  { "role": "system",    "content": "You are a helpful coding assistant." },
-
-  { "role": "user",      "content": "What does the config file do?" },
-  { "role": "assistant", "content": "It maps model names to API endpoints and keys." },
-
-  { "role": "user",      "content": "How is it loaded?" },
-  { "role": "assistant", "content": "With readFileSync('config.json') at startup." },
-
-  { "role": "user",      "content": "Can it reload without restarting?" },
-  { "role": "assistant", "content": "Not currently — it's only read once on boot." }
-]</code></pre>
+  <div class="msg-pre">
+    <span class="msg role-system">{ "role": "system",    "content": "You are a helpful coding assistant." },</span>
+    <span class="msg"> </span>
+    <span class="msg role-user">{ "role": "user",      "content": "What does the config file do?" },</span>
+    <span class="msg role-assistant">{ "role": "assistant", "content": "It maps model names to API endpoints and keys." },</span>
+    <span class="msg"> </span>
+    <span class="msg role-user">{ "role": "user",      "content": "How is it loaded?" },</span>
+    <span class="msg role-assistant">{ "role": "assistant", "content": "With readFileSync('config.json') at startup." },</span>
+    <span class="msg"> </span>
+    <span class="msg role-user">{ "role": "user",      "content": "Can it reload without restarting?" },</span>
+    <span class="msg role-assistant">{ "role": "assistant", "content": "Not currently — it's only read once on boot." }</span>
+  </div>
   <p style="font-size:0.7em; color:#aaa;">
     Every request is stateless. "Memory" is just this array growing.<br/>
     Context window = how large this can get before the model forgets the beginning.
@@ -261,21 +276,23 @@ async function chat(userMessage: string): Promise&lt;string&gt; {
 <section>
   <h2>Tool calls in the history</h2>
   <p style="font-size:0.75em;">Tool calls and their results are just more messages. The model sees the full trace.</p>
-  <pre><code class="language-json">{ "role": "user",      "content": "rename all .js files to .ts" },
-
-{ "role": "assistant", "tool_calls": [{
-    "id": "call_abc",
-    "function": { "name": "bash", "arguments": "{\"command\": \"ls *.js\"}" }
-}]},
-{ "role": "tool", "tool_call_id": "call_abc", "content": "file1.js\nfile2.js" },
-
-{ "role": "assistant", "tool_calls": [{
-    "id": "call_def",
-    "function": { "name": "bash", "arguments": "{\"command\": \"mv file1.js file1.ts && mv file2.js file2.ts\"}" }
-}]},
-{ "role": "tool", "tool_call_id": "call_def", "content": "" },
-
-{ "role": "assistant", "content": "Done! Renamed file1.js and file2.js to .ts" }</code></pre>
+  <div class="msg-pre">
+    <span class="msg role-user">{ "role": "user",      "content": "rename all .js files to .ts" },</span>
+    <span class="msg"> </span>
+    <span class="msg role-assistant">{ "role": "assistant", "tool_calls": [{</span>
+    <span class="msg role-assistant">    "id": "call_abc",</span>
+    <span class="msg role-assistant">    "function": { "name": "bash", "arguments": "{\"command\": \"ls *.js\"}" }</span>
+    <span class="msg role-assistant">}]},</span>
+    <span class="msg role-tool">{ "role": "tool", "tool_call_id": "call_abc", "content": "file1.js\nfile2.js" },</span>
+    <span class="msg"> </span>
+    <span class="msg role-assistant">{ "role": "assistant", "tool_calls": [{</span>
+    <span class="msg role-assistant">    "id": "call_def",</span>
+    <span class="msg role-assistant">    "function": { "name": "bash", "arguments": "{\"command\": \"mv file1.js file1.ts && mv file2.js file2.ts\"}" }</span>
+    <span class="msg role-assistant">}]},</span>
+    <span class="msg role-tool">{ "role": "tool", "tool_call_id": "call_def", "content": "" },</span>
+    <span class="msg"> </span>
+    <span class="msg role-assistant">{ "role": "assistant", "content": "Done! Renamed file1.js and file2.js to .ts" }</span>
+  </div>
   <p style="font-size:0.7em; color:#aaa;">Each tool result is fed back so the model can decide what to do next.</p>
 </section>
 
