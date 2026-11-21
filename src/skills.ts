@@ -21,16 +21,25 @@ function parseFrontmatter(content: string): { name: string | undefined; descript
   const body = (match[2] ?? "").trim();
 
   const fields: Record<string, string> = {};
+  let lastKey: string | undefined;
   for (const line of fm.split("\n")) {
+    // An indented line continues the previous field (a multi-line YAML value).
+    if (/^\s/.test(line) && lastKey) {
+      fields[lastKey] = `${fields[lastKey]} ${line.trim()}`.trim();
+      continue;
+    }
     const colonIdx = line.indexOf(":");
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim();
     let value = line.slice(colonIdx + 1).trim();
+    // ">" and "|" mean "the value starts on the next line".
+    if ([">", ">-", "|", "|-"].includes(value)) value = "";
     if ((value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
     fields[key] = value;
+    lastKey = key;
   }
 
   return { name: fields["name"], description: fields["description"], body };
