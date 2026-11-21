@@ -35,3 +35,7 @@ Run `mca` (or `npm start`) and chat. Commands: `/model <name>`, `/models`, `/too
 Skills are loaded from `.claude/skills/` and `.agents/skills/`, in both your home directory and the current directory.
 
 > **Warning:** the `bash` tool runs any command the model asks for, with no confirmation. Use it in a throwaway directory or container.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
