@@ -45,7 +45,7 @@
       letter-spacing: 0.1em;
     }
     /* message role colors */
-    .msg { display: block; }
+    .msg { display: block; white-space: pre-wrap; }
     .role-system    { color: #888; }
     .role-user      { color: #98c379; }
     .role-assistant { color: #7c9ef7; }
@@ -55,8 +55,8 @@
       border-radius: 6px;
       padding: 0.7em 1em;
       font-family: monospace;
-      font-size: 0.68em;
-      line-height: 1.7;
+      font-size: 0.4em;
+      line-height: 1.45;
       overflow: auto;
       max-height: 480px;
     }
@@ -84,7 +84,7 @@
     <li>Add skills → the model knows <em>how</em> to do things</li>
     <li>Add slash commands → <code>/reset</code>, <code>/model</code>, <code>/dump</code>, …</li>
   </ol>
-  <p style="font-size:0.7em; color:#aaa; margin-top:0.6em;">Each step is small. The whole thing is less than 700 lines.</p>
+  <p style="font-size:0.7em; color:#aaa; margin-top:0.6em;">Each step is small. The whole thing is about 700 lines.</p>
 </section>
 
 <!-- ─── IT'S JUST HTTP ─── -->
@@ -94,13 +94,13 @@
   <pre><code class="language-bash">curl http://localhost:1234/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-coder-7b",
+    "model": "qwen/qwen3.6-35b-a3b",
     "messages": [
       { "role": "system", "content": "You are a helpful coding assistant." },
       { "role": "user",   "content": "What files are in the current directory?" }
     ]
   }'</code></pre>
-  <p style="font-size:0.65em; color:#aaa;">Started with this exact curl against LM Studio. Everything else is built on top.</p>
+  <p style="font-size:0.65em; color:#aaa;">Started with a curl like this against LM Studio. Everything else is built on top.</p>
 </section>
 
 <!-- ─── THE RESPONSE ─── -->
@@ -164,7 +164,8 @@ while (true) {
   </div>
   <p style="font-size:0.7em; color:#aaa;">
     Every request is stateless. "Memory" is just this array growing.<br/>
-    Context window = how large this can get before the model forgets the beginning.
+    Context window = the most this array can hold. Past that, the request fails<br/>
+    or the server drops old messages. The model itself remembers nothing.
   </p>
 </section>
 
@@ -183,7 +184,7 @@ while (true) {
 <section>
   <h2>Tool calling <span class="label">the contract</span></h2>
   <p style="font-size:0.75em;">You describe your tools in JSON. The model decides when to call them.</p>
-  <pre><code class="language-typescript">// src/tools/bash.ts
+  <pre><code class="language-typescript">// src/tools/bash.ts (simplified)
 export const bash: Tool = {
   definition: {
     type: "function",
@@ -226,6 +227,7 @@ export const bash: Tool = {
   }]
 }</code></pre>
   <p style="font-size:0.7em;">You execute it, append the result, and call the API again.</p>
+  <p style="font-size:0.6em; color:#aaa;">Needs a model trained for tool calling: qwen2.5-coder-7b just writes the call as text.</p>
 </section>
 
 <!-- ─── THE AGENTIC LOOP ─── -->
@@ -251,7 +253,7 @@ export const bash: Tool = {
 <!-- ─── THE AGENTIC LOOP: CODE ─── -->
 <section>
   <h2>The loop in code</h2>
-  <pre><code class="language-typescript">// src/index.ts
+  <pre><code class="language-typescript">// src/index.ts (simplified)
 async function chat(userMessage: string): Promise&lt;string&gt; {
   messages.push({ role: "user", content: userMessage });
 
@@ -336,7 +338,7 @@ validate the message before committing.</code></pre>
 <!-- ─── SKILLS 2/2 ─── -->
 <section>
   <h2>Skills <span class="label">2/2</span> — progressive disclosure</h2>
-  <p style="font-size:0.75em;">Only name + description enter the system prompt at startup. The model pulls in what it needs, when it needs it. </p>
+  <p style="font-size:0.75em;">Only a short catalog enters the system prompt at startup. The model pulls in what it needs, when it needs it. </p>
   <div class="two-col">
     <div>
       <p style="font-size:0.65em; color:#aaa;">at startup</p>
@@ -346,6 +348,8 @@ validate the message before committing.</code></pre>
     &lt;description&gt;Create a git commit
       following conventional commits
     &lt;/description&gt;
+    &lt;location&gt;.../commit/SKILL.md
+    &lt;/location&gt;
   &lt;/skill&gt;
 &lt;/available_skills&gt;</code></pre>
     </div>
@@ -379,7 +383,7 @@ Run `git diff --staged` first.
       <li><strong>Multi-modal</strong> — images, screenshots, PDFs</li>
       <li><strong>MCP</strong> — standard protocol for external tools</li>
       <li><strong>Sub-agents</strong> — spawning parallel workers</li>
-      <li><strong>Long context management</strong> -- compaction</li>
+      <li><strong>Long context management</strong> — compaction</li>
     </ul>
   </div>
 </section>
@@ -391,13 +395,13 @@ Run `git diff --staged` first.
   <div style="display:flex; gap:1.5em; justify-content:center; font-size:0.6em; text-align:left;">
     <div style="border:1px solid #444; border-radius:6px; padding:0.8em 1.2em; min-width:12em;">
       <div style="color:var(--accent); margin-bottom:0.4em; font-weight:bold;">this project</div>
-      <div>635 lines of TypeScript</div>
+      <div>~700 lines of TypeScript</div>
       <div>zero runtime dependencies</div>
       <div style="margin-top:0.4em; color:#888;">
-        index.ts &nbsp;144<br/>
-        skills.ts &nbsp;187<br/>
-        types.ts &nbsp;&nbsp;&nbsp;92<br/>
-        tools/ &nbsp;&nbsp;&nbsp;&nbsp;212
+        index.ts &nbsp;~180<br/>
+        skills.ts &nbsp;~200<br/>
+        types.ts &nbsp;&nbsp;&nbsp;~90<br/>
+        tools/ &nbsp;&nbsp;&nbsp;&nbsp;~230
       </div>
     </div>
     <div style="border:1px solid #444; border-radius:6px; padding:0.8em 1.2em; min-width:12em;">
