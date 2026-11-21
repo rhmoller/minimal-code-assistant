@@ -22,10 +22,16 @@ export const grep: Tool = {
     const pattern = args["pattern"] as string;
     const path = (args["path"] as string | undefined) ?? ".";
     const flags = (args["flags"] as string | undefined) ?? "-r -n";
-    const command = `grep ${flags} ${JSON.stringify(pattern)} ${JSON.stringify(path)}`;
-    console.log(`[grep] ${command}`);
+    console.log(`[grep] grep ${flags} ${pattern} ${path}`);
+    // Pass the model's values as environment variables instead of pasting them
+    // into the command string. The shell substitutes "$PATTERN", but never runs
+    // its contents as code, so `$(rm -rf ~)` or `${user}` are searched literally.
+    // $FLAGS is deliberately unquoted so "-r -n" is split into two arguments.
+    const command = `grep $FLAGS "$PATTERN" "$SEARCH_PATH"`;
     try {
-      const { stdout, stderr } = await execAsync(command);
+      const { stdout, stderr } = await execAsync(command, {
+        env: { ...process.env, FLAGS: flags, PATTERN: pattern, SEARCH_PATH: path },
+      });
       return (stdout + stderr).trim() || "(no matches)";
     } catch (err: unknown) {
       // grep exits with code 1 when there are no matches

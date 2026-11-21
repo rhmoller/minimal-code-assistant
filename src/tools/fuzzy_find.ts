@@ -20,10 +20,14 @@ export const fuzzy_find: Tool = {
   async execute(args) {
     const query = args["query"] as string;
     const path = (args["path"] as string | undefined) ?? ".";
-    const command = `find ${JSON.stringify(path)} -type f | fzf --filter=${JSON.stringify(query)}`;
     console.log(`[fuzzy_find] query="${query}" in ${path}`);
+    // Values are passed as environment variables, not pasted into the command,
+    // so the shell never runs them as code (see grep.ts).
+    const command = `find "$SEARCH_PATH" -type f | fzf --filter="$QUERY"`;
     try {
-      const { stdout } = await execAsync(command);
+      const { stdout } = await execAsync(command, {
+        env: { ...process.env, SEARCH_PATH: path, QUERY: query },
+      });
       return stdout.trim() || "(no matches)";
     } catch (err: unknown) {
       const result = err as { stdout?: string };
