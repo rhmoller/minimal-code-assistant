@@ -23,7 +23,9 @@ export const bash: Tool = {
       const { stdout, stderr } = await execAsync(command);
       return (stdout + stderr).trim();
     } catch (err) {
-      return String(err);
+      // A failing command (e.g. failing tests) still has useful output, so keep it.
+      const { stdout = "", stderr = "", code } = err as { stdout?: string; stderr?: string; code?: number };
+      return `${stdout}${stderr}\n[exit code ${code}]`.trim();
     }
   },
 };
