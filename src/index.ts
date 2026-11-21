@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "fs";
 import readline from "readline";
-import type { ChatRequest, ChatResponse, Message } from "./types.js";
+import type { ChatRequest, ChatResponse, Message, ToolCall } from "./types.js";
 import { tools } from "./tools/index.js";
 import { discoverSkills, buildSkillCatalog, buildActivateSkillTool } from "./skills.js";
 
@@ -98,15 +98,34 @@ async function chat(userMessage: string): Promise<string> {
     }
 
     for (const toolCall of choice.message.tool_calls ?? []) {
-      const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
-      console.log(`${C.yellow}[tool] ${toolCall.function.name}${C.reset}`);
-      console.log(`${C.yellow}  args: ${JSON.stringify(args)}${C.reset}`);
-      const tool = toolMap.get(toolCall.function.name);
-      const result = tool ? await tool.execute(args) : `Unknown tool: ${toolCall.function.name}`;
+      const result = await runTool(toolCall);
       console.log(`${C.yellow}  result: ${result.slice(0, 200)}${result.length > 200 ? "..." : ""}${C.reset}`);
       messages.push({ role: "tool", tool_call_id: toolCall.id, content: result });
     }
   }
+}
+
+async function runTool(toolCall: ToolCall): Promise<string> {
+  const { name, arguments: rawArgs } = toolCall.function;
+  console.log(`${C.yellow}[tool] ${name}${C.reset}`);
+  console.log(`${C.yellow}  args: ${rawArgs}${C.reset}`);
+
+  const tool = toolMap.get(name);
+  if (!tool) return `Unknown tool: ${name}`;
+
+  let args: Record<string, unknown>;
+  try {
+    args = JSON.parse(rawArgs);
+  } catch (err) {
+    // Models sometimes produce broken JSON. Tell the model, so it can retry.
+    // toolCall is the same object that is stored in `messages`, so we also
+    // overwrite the broken arguments: some servers (e.g. LM Studio) reject
+    // every later request whose history contains invalid JSON arguments.
+    toolCall.function.arguments = "{}";
+    return `Error: the arguments were not valid JSON (${err}). Please try again.`;
+  }
+
+  return tool.execute(args);
 }
 
 function handleSlashCommand(input: string): void {
