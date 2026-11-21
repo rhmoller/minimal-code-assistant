@@ -29,7 +29,8 @@ export const edit_file: Tool = {
       const count = original.split(oldString).length - 1;
       if (count === 0) return `Error: old_string not found in ${filePath}`;
       if (count > 1) return `Error: old_string found ${count} times in ${filePath}, must be unique`;
-      await fs.writeFile(filePath, original.replace(oldString, newString), "utf-8");
+      // Use a replacer function so "$&", "$$" etc. in newString are inserted literally.
+      await fs.writeFile(filePath, original.replace(oldString, () => newString), "utf-8");
       return `Replaced in ${filePath}`;
     } catch (err) {
       return String(err);
